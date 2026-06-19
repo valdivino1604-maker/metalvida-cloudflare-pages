@@ -1,0 +1,426 @@
+// Troque este numero pelo WhatsApp oficial. Use somente numeros, com codigo do pais e DDD.
+const LOBAO_WHATSAPP_NUMBER = "556499834032";
+
+// Opcional: coloque aqui a imagem oficial do Lobao, por exemplo: "assets/lobao.png".
+const LOBAO_AVATAR_IMAGE = "";
+
+// Futuro uso com API: aponte para um backend proprio. Nunca exponha chave da OpenAI no navegador.
+const LOBAO_AI_ENDPOINT = "";
+
+const lobaoState = {
+  isOpen: false,
+  greeted: false,
+  mode: "idle",
+  currentLeadStep: 0,
+  lead: {
+    nome: "",
+    cidade: "",
+    whatsapp: "",
+    servico: "",
+    medidas: "",
+    quantidade: "",
+    prazo: "",
+    projeto: ""
+  }
+};
+
+const lobaoLeadSteps = [
+  { key: "nome", question: "Pra comecar certinho: qual e o seu nome?" },
+  { key: "cidade", question: "Boa. Qual e a sua cidade?" },
+  {
+    key: "whatsapp",
+    question: "Me passa seu telefone ou WhatsApp com DDD, por favor?",
+    validate(value) {
+      return value.replace(/\D/g, "").length >= 10;
+    },
+    invalid: "Esse numero parece incompleto. Pode mandar com DDD? Exemplo: 64 99999-9999."
+  },
+  { key: "servico", question: "Qual servico ou produto voce precisa? Pode ser portao, grade, corrimao, cobertura, estrutura metalica ou peca sob medida." },
+  { key: "medidas", question: "Quais sao as medidas aproximadas? Se ainda nao tiver exato, pode mandar uma estimativa." },
+  { key: "quantidade", question: "Qual a quantidade desejada?" },
+  { key: "prazo", question: "Tem algum prazo desejado? Vou registrar como referencia, sem prometer antes da analise da equipe." },
+  { key: "projeto", question: "Voce possui foto, desenho ou projeto? Se tiver, pode mencionar aqui e enviar pelo WhatsApp na proxima etapa." }
+];
+
+const lobaoLauncher = document.getElementById("lobaoLauncher");
+const lobaoPanel = document.getElementById("lobaoChatPanel");
+const lobaoClose = document.getElementById("lobaoClose");
+const lobaoMessages = document.getElementById("lobaoMessages");
+const lobaoForm = document.getElementById("lobaoForm");
+const lobaoInput = document.getElementById("lobaoInput");
+
+function lobaoAvatarMarkup() {
+  if (LOBAO_AVATAR_IMAGE) {
+    return `<img src="${LOBAO_AVATAR_IMAGE}" alt="Lobao da Metal Vida">`;
+  }
+
+  return `
+    <svg viewBox="0 0 120 120" role="img" aria-label="Avatar do Lobao da Metal Vida">
+      <defs>
+        <linearGradient id="lobaoFur" x1="20" y1="10" x2="95" y2="105" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stop-color="#f2f3f4"></stop>
+          <stop offset=".48" stop-color="#aeb6bf"></stop>
+          <stop offset="1" stop-color="#4c555e"></stop>
+        </linearGradient>
+      </defs>
+      <circle cx="60" cy="60" r="58" fill="#ff7a1a"></circle>
+      <circle cx="60" cy="62" r="48" fill="#121417"></circle>
+      <path d="M26 52 18 18l29 20h26l29-20-8 34 11 18-18 33H33L15 70Z" fill="url(#lobaoFur)"></path>
+      <path d="M36 46 22 28l7 27Z" fill="#f5f6f7" opacity=".9"></path>
+      <path d="M84 46 98 28l-7 27Z" fill="#f5f6f7" opacity=".9"></path>
+      <path d="M37 73c9 10 37 10 46 0l-8 25H45Z" fill="#f8f8f8"></path>
+      <path d="M48 64c-8-4-16-2-22 3 8 1 15 1 22-3Z" fill="#111315"></path>
+      <path d="M72 64c8-4 16-2 22 3-8 1-15 1-22-3Z" fill="#111315"></path>
+      <circle cx="45" cy="61" r="5" fill="#ff7a1a"></circle>
+      <circle cx="75" cy="61" r="5" fill="#ff7a1a"></circle>
+      <path d="M55 75h10l-5 7Z" fill="#111315"></path>
+      <path d="M60 82v8" stroke="#111315" stroke-width="4" stroke-linecap="round"></path>
+      <path d="M49 91c5 5 17 5 22 0" stroke="#111315" stroke-width="4" stroke-linecap="round" fill="none"></path>
+    </svg>
+  `;
+}
+
+function lobaoSetupAvatars() {
+  document.querySelectorAll("[data-lobao-avatar]").forEach((target) => {
+    target.innerHTML = lobaoAvatarMarkup();
+  });
+}
+
+function lobaoOpenChat() {
+  lobaoState.isOpen = true;
+  lobaoPanel.classList.add("is-open");
+  lobaoPanel.setAttribute("aria-hidden", "false");
+  lobaoLauncher.setAttribute("aria-expanded", "true");
+  lobaoLauncher.setAttribute("aria-label", "Fechar atendimento do Lobao");
+  lobaoInput.focus();
+
+  if (!lobaoState.greeted) {
+    lobaoState.greeted = true;
+    lobaoAddBotMessage("Fala, campeao! Aqui e o Lobao da Metal Vida. Estou pronto pra te ajudar com foco, agilidade e solucao. Me conta: voce precisa de orcamento, tirar uma duvida ou falar com nossa equipe?");
+  }
+}
+
+function lobaoCloseChat() {
+  lobaoState.isOpen = false;
+  lobaoPanel.classList.remove("is-open");
+  lobaoPanel.setAttribute("aria-hidden", "true");
+  lobaoLauncher.setAttribute("aria-expanded", "false");
+  lobaoLauncher.setAttribute("aria-label", "Abrir atendimento do Lobao");
+}
+
+function lobaoToggleChat() {
+  lobaoState.isOpen ? lobaoCloseChat() : lobaoOpenChat();
+}
+
+function lobaoAddMessage(text, sender, actions = []) {
+  const row = document.createElement("div");
+  row.className = `lobao-message-row is-${sender}`;
+
+  if (sender === "bot") {
+    const avatar = document.createElement("div");
+    avatar.className = "lobao-message-avatar";
+    avatar.innerHTML = lobaoAvatarMarkup();
+    row.appendChild(avatar);
+  }
+
+  const bubble = document.createElement("div");
+  bubble.className = "lobao-bubble";
+  bubble.textContent = text;
+
+  if (actions.length > 0) {
+    const actionWrap = document.createElement("div");
+    actionWrap.className = "lobao-actions";
+
+    actions.forEach((action) => {
+      const element = action.href ? document.createElement("a") : document.createElement("button");
+      element.className = `lobao-action${action.secondary ? " secondary" : ""}`;
+      element.innerHTML = `${action.icon || ""}<span>${action.label}</span>`;
+
+      if (action.href) {
+        element.href = action.href;
+        element.target = "_blank";
+        element.rel = "noopener noreferrer";
+      } else {
+        element.type = "button";
+        element.addEventListener("click", action.onClick);
+      }
+
+      actionWrap.appendChild(element);
+    });
+
+    bubble.appendChild(actionWrap);
+  }
+
+  row.appendChild(bubble);
+  lobaoMessages.appendChild(row);
+  lobaoMessages.scrollTop = lobaoMessages.scrollHeight;
+}
+
+function lobaoAddBotMessage(text, actions = []) {
+  lobaoAddMessage(text, "bot", actions);
+}
+
+function lobaoAddUserMessage(text) {
+  lobaoAddMessage(text, "user");
+}
+
+function lobaoNormalize(text) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+}
+
+function lobaoServiceExplanation(message) {
+  const text = lobaoNormalize(message);
+
+  if (text.includes("portao")) {
+    return "A Metal Vida trabalha com portoes metalicos sob medida, conforme espaco, modelo desejado e necessidade do local. Para orcamento, preciso das medidas, cidade e um contato.";
+  }
+
+  if (text.includes("grade")) {
+    return "Fazemos grades metalicas para protecao, acabamento e projetos personalizados. O valor final depende de medidas, desenho, quantidade e instalacao.";
+  }
+
+  if (text.includes("corrimao") || text.includes("guarda corpo")) {
+    return "Corrimaos e guarda-corpos podem ser feitos sob medida, buscando firmeza, acabamento e seguranca. A equipe avalia medidas e local antes de fechar orcamento.";
+  }
+
+  if (text.includes("cobertura")) {
+    return "Coberturas metalicas sao avaliadas conforme area, estrutura, tipo de telha, acabamento e local de instalacao. O ideal e enviar medidas e, se tiver, foto do espaco.";
+  }
+
+  if (text.includes("estrutura")) {
+    return "Trabalhamos com estruturas metalicas para projetos personalizados. Para mirar certo na solucao, a equipe precisa analisar dimensoes, finalidade e local de instalacao.";
+  }
+
+  if (text.includes("peca") || text.includes("sob medida")) {
+    return "Pecas sob medida sao avaliadas conforme desenho, material, medidas e quantidade. Se tiver foto, desenho ou projeto, melhor ainda.";
+  }
+
+  return "";
+}
+
+function lobaoListServices() {
+  lobaoAddBotMessage(
+    "A Metal Vida atende com:\n\n- Estruturas metalicas\n- Portoes\n- Grades\n- Corrimaos\n- Coberturas metalicas\n- Pecas sob medida\n- Servicos de serralheria e metalurgica\n- Orcamentos personalizados\n\nMe diga qual servico voce procura que eu ja te guio no proximo passo.",
+    [
+      { label: "Quero orcamento", icon: lobaoIconTarget(), onClick: lobaoStartBudgetFlow },
+      { label: "Chamar no WhatsApp", icon: lobaoIconWhatsApp(), href: lobaoBuildWhatsAppLink("Ola! Vim pelo site e quero falar com a equipe da Metal Vida.") }
+    ]
+  );
+}
+
+function lobaoStartBudgetFlow() {
+  lobaoState.mode = "budget";
+  lobaoState.currentLeadStep = 0;
+  lobaoState.lead = {
+    nome: "",
+    cidade: "",
+    whatsapp: "",
+    servico: "",
+    medidas: "",
+    quantidade: "",
+    prazo: "",
+    projeto: ""
+  };
+
+  lobaoAddBotMessage("Show! Vamos mirar certo nessa solucao. Para eu te ajudar com o orcamento, vou coletar alguns dados e depois encaminhar para a equipe da Metal Vida analisar com precisao.\n\n" + lobaoLeadSteps[0].question);
+}
+
+function lobaoHandleBudgetAnswer(userText) {
+  const step = lobaoLeadSteps[lobaoState.currentLeadStep];
+
+  if (step.validate && !step.validate(userText)) {
+    lobaoAddBotMessage(step.invalid);
+    return;
+  }
+
+  lobaoState.lead[step.key] = userText.trim();
+  lobaoState.currentLeadStep += 1;
+
+  if (lobaoState.currentLeadStep < lobaoLeadSteps.length) {
+    lobaoAddBotMessage(lobaoLeadSteps[lobaoState.currentLeadStep].question);
+    return;
+  }
+
+  lobaoState.mode = "idle";
+  const summary = lobaoBuildLeadSummary();
+  lobaoAddBotMessage(
+    `${summary}\n\nPerfeito. O orcamento final depende da analise da equipe, combinado? Agora posso te encaminhar pelo WhatsApp com esses dados ja organizados.`,
+    [
+      { label: "Enviar pelo WhatsApp", icon: lobaoIconWhatsApp(), href: lobaoBuildWhatsAppLink(summary) },
+      { label: "Novo orcamento", icon: lobaoIconTarget(), secondary: true, onClick: lobaoStartBudgetFlow }
+    ]
+  );
+}
+
+function lobaoBuildLeadSummary() {
+  return [
+    "Ola! Vim pelo site e quero solicitar um orcamento com a Metal Vida.",
+    "",
+    `Nome: ${lobaoState.lead.nome || "Nao informado"}`,
+    `Cidade: ${lobaoState.lead.cidade || "Nao informada"}`,
+    `WhatsApp: ${lobaoState.lead.whatsapp || "Nao informado"}`,
+    `Servico/produto: ${lobaoState.lead.servico || "Nao informado"}`,
+    `Medidas aproximadas: ${lobaoState.lead.medidas || "Nao informadas"}`,
+    `Quantidade: ${lobaoState.lead.quantidade || "Nao informada"}`,
+    `Prazo desejado: ${lobaoState.lead.prazo || "Nao informado"}`,
+    `Foto/desenho/projeto: ${lobaoState.lead.projeto || "Nao informado"}`
+  ].join("\n");
+}
+
+function lobaoAskForHumanContact() {
+  lobaoAddBotMessage(
+    "Vamos resolver isso! Para falar com um atendente da Metal Vida, o melhor caminho e o WhatsApp. Se puder, ja envie seu nome, cidade e o que voce precisa.",
+    [
+      { label: "Abrir WhatsApp", icon: lobaoIconWhatsApp(), href: lobaoBuildWhatsAppLink("Ola! Vim pelo site e quero falar com um atendente da Metal Vida.") }
+    ]
+  );
+}
+
+function lobaoAskForMeasures() {
+  lobaoState.mode = "budget";
+  lobaoState.currentLeadStep = 0;
+  lobaoState.lead = {
+    nome: "",
+    cidade: "",
+    whatsapp: "",
+    servico: "",
+    medidas: "",
+    quantidade: "",
+    prazo: "",
+    projeto: ""
+  };
+  lobaoAddBotMessage("Tamo junto! Pode mandar as medidas sim. Para nao perder nenhuma informacao do orcamento, vou registrar rapidinho seus dados primeiro.\n\n" + lobaoLeadSteps[0].question);
+}
+
+async function lobaoGetFutureAIReply(userText) {
+  if (!LOBAO_AI_ENDPOINT) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(LOBAO_AI_ENDPOINT, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: userText,
+        assistant: "Lobao da Metal Vida",
+        lead: lobaoState.lead
+      })
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return data.reply || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function lobaoHandleMessage(userText) {
+  if (lobaoState.mode === "budget") {
+    lobaoHandleBudgetAnswer(userText);
+    return;
+  }
+
+  const aiReply = await lobaoGetFutureAIReply(userText);
+  if (aiReply) {
+    lobaoAddBotMessage(aiReply);
+    return;
+  }
+
+  const text = lobaoNormalize(userText);
+  const explanation = lobaoServiceExplanation(userText);
+
+  if (text.includes("orcamento") || text.includes("valor") || text.includes("preco") || text.includes("cotacao") || text.includes("quanto custa")) {
+    lobaoStartBudgetFlow();
+    return;
+  }
+
+  if (text.includes("atendente") || text.includes("humano") || text.includes("whatsapp") || text.includes("falar")) {
+    lobaoAskForHumanContact();
+    return;
+  }
+
+  if (text.includes("servico") || text.includes("fazem") || text.includes("trabalha") || text.includes("opcoes")) {
+    lobaoListServices();
+    return;
+  }
+
+  if (text.includes("medida") || text.includes("metragem") || text.includes("tamanho")) {
+    lobaoAskForMeasures();
+    return;
+  }
+
+  if (explanation) {
+    lobaoAddBotMessage(
+      `${explanation}\n\nQuer que eu colete os dados para orcamento?`,
+      [
+        { label: "Sim, quero orcamento", icon: lobaoIconTarget(), onClick: lobaoStartBudgetFlow },
+        { label: "WhatsApp", icon: lobaoIconWhatsApp(), href: lobaoBuildWhatsAppLink(`Ola! Vim pelo site e quero informacoes sobre: ${userText}`) }
+      ]
+    );
+    return;
+  }
+
+  lobaoAddBotMessage(
+    "Boa pergunta! Pra nao te passar informacao errada, vou encaminhar isso para a equipe da Metal Vida analisar com precisao. Pode me passar seu WhatsApp?",
+    [
+      { label: "Chamar equipe", icon: lobaoIconWhatsApp(), href: lobaoBuildWhatsAppLink(`Ola! Vim pelo site e tenho esta duvida: ${userText}`) }
+    ]
+  );
+}
+
+function lobaoBuildWhatsAppLink(message) {
+  return `https://wa.me/${LOBAO_WHATSAPP_NUMBER}?text=${encodeURIComponent(message)}`;
+}
+
+function lobaoIconWhatsApp() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.6a8 8 0 0 1-11.8 7l-4.2 1 1.1-4A8 8 0 1 1 20 11.6Z"></path><path d="M9 8.8c.4 2.5 1.8 4.2 4.3 5.2l1.3-1.1 2.1.7c-.1 1-.8 2-2.1 2.2-3 .4-7.6-3-8.2-6.3-.2-1.2.6-2.2 1.5-2.5Z"></path></svg>';
+}
+
+function lobaoIconTarget() {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3"></path><path d="M12 19v3"></path><path d="M2 12h3"></path><path d="M19 12h3"></path></svg>';
+}
+
+lobaoLauncher.addEventListener("click", lobaoToggleChat);
+lobaoClose.addEventListener("click", lobaoCloseChat);
+
+lobaoForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const value = lobaoInput.value.trim();
+
+  if (!value) {
+    return;
+  }
+
+  lobaoAddUserMessage(value);
+  lobaoInput.value = "";
+  lobaoHandleMessage(value);
+});
+
+document.querySelectorAll("[data-lobao-quick]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const value = button.dataset.lobaoQuick;
+    lobaoOpenChat();
+    lobaoAddUserMessage(value);
+
+    if (value === "Quero orcamento") {
+      lobaoStartBudgetFlow();
+    } else if (value === "Falar com atendente") {
+      lobaoAskForHumanContact();
+    } else if (value === "Ver servicos") {
+      lobaoListServices();
+    } else if (value === "Enviar medidas") {
+      lobaoAskForMeasures();
+    }
+  });
+});
+
+lobaoSetupAvatars();
