@@ -1,0 +1,4 @@
+Deploy forcado para atualizar Cloudflare Pages.
+Projeto: metalvida-cloudflare-pages
+Data: 2026-06-27
+Motivo: atualizar site publicado no ambiente Cloudflare.
