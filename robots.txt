@@ -2,4 +2,5 @@ User-agent: *
 Allow: /
 
 Sitemap: https://www.metalvida.com.br/sitemap.xml
-# deploy-trigger: busca-produtos-2026
+Sitemap: https://www.metalvida.com.br/sitemap-produtos.xml
+# deploy-trigger: metalvida-seo-atualizado
